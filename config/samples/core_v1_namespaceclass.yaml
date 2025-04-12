@@ -2,54 +2,44 @@ apiVersion: v1
 kind: Namespace
 metadata:
   labels:
-    namespaceclass.akuity.io/name: internal-network
-  name: daochun-private
-spec:
-  finalizers:
-    - kubernetes
----
-apiVersion: v1
-kind: Namespace
-metadata:
-  labels:
     namespaceclass.akuity.io/name: public-network
   name: daochun-public
 spec:
   finalizers:
     - kubernetes
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: httpbin
-  namespace: daochun-public
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: httpbin
-      version: v1
-  template:
-    metadata:
-      labels:
-        app: httpbin
-        version: v1
-        stage: release
-    spec:
-      #serviceAccountName: httpbin
-      containers:
-        - image: 078611336077.dkr.ecr.cn-northwest-1.amazonaws.com.cn/devops/httpbin:printenv-httpd
-          imagePullPolicy: IfNotPresent
-          name: httpbin
-          ports:
-            - containerPort: 80
-        - image: 078611336077.dkr.ecr.cn-northwest-1.amazonaws.com.cn/devops/busybox:1.32
-          imagePullPolicy: IfNotPresent
-          name: busybox
-          command:
-            - /bin/sleep
-          args:
-            - infinity
+#---
+#apiVersion: apps/v1
+#kind: Deployment
+#metadata:
+#  name: httpbin
+#  namespace: daochun-public
+#spec:
+#  replicas: 1
+#  selector:
+#    matchLabels:
+#      app: httpbin
+#      version: v1
+#  template:
+#    metadata:
+#      labels:
+#        app: httpbin
+#        version: v1
+#        stage: release
+#    spec:
+#      #serviceAccountName: httpbin
+#      containers:
+#        - image: 078611336077.dkr.ecr.cn-northwest-1.amazonaws.com.cn/devops/httpbin:printenv-httpd
+#          imagePullPolicy: IfNotPresent
+#          name: httpbin
+#          ports:
+#            - containerPort: 80
+#        - image: 078611336077.dkr.ecr.cn-northwest-1.amazonaws.com.cn/devops/busybox:1.32
+#          imagePullPolicy: IfNotPresent
+#          name: busybox
+#          command:
+#            - /bin/sleep
+#          args:
+#            - infinity
 ---
 apiVersion: v1
 kind: Namespace
@@ -60,36 +50,36 @@ metadata:
 spec:
   finalizers:
     - kubernetes
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: httpbin
-  namespace: daochun-internal
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: httpbin
-  template:
-    metadata:
-      labels:
-        app: httpbin
-    spec:
-      #serviceAccountName: httpbin
-      containers:
-        - image: 078611336077.dkr.ecr.cn-northwest-1.amazonaws.com.cn/devops/httpbin:printenv-httpd
-          imagePullPolicy: IfNotPresent
-          name: httpbin
-          ports:
-            - containerPort: 80
-        - image: 078611336077.dkr.ecr.cn-northwest-1.amazonaws.com.cn/devops/busybox:1.32
-          imagePullPolicy: IfNotPresent
-          name: busybox
-          command:
-            - /bin/sleep
-          args:
-            - infinity
+#---
+#apiVersion: apps/v1
+#kind: Deployment
+#metadata:
+#  name: httpbin
+#  namespace: daochun-internal
+#spec:
+#  replicas: 1
+#  selector:
+#    matchLabels:
+#      app: httpbin
+#  template:
+#    metadata:
+#      labels:
+#        app: httpbin
+#    spec:
+#      #serviceAccountName: httpbin
+#      containers:
+#        - image: 078611336077.dkr.ecr.cn-northwest-1.amazonaws.com.cn/devops/httpbin:printenv-httpd
+#          imagePullPolicy: IfNotPresent
+#          name: httpbin
+#          ports:
+#            - containerPort: 80
+#        - image: 078611336077.dkr.ecr.cn-northwest-1.amazonaws.com.cn/devops/busybox:1.32
+#          imagePullPolicy: IfNotPresent
+#          name: busybox
+#          command:
+#            - /bin/sleep
+#          args:
+#            - infinity
 ---
 apiVersion: core.akuity.io/v1
 kind: NamespaceClass
