@@ -40,9 +40,6 @@ import (
 
 const (
 	NamespaceLabelName = "namespaceclass.akuity.io/name"
-
-	ResourceNetworkPolicy  = "networkPolicy"
-	ResourceServiceAccount = "serviceAccount"
 )
 
 // NamespaceClassReconciler reconciles a NamespaceClass object
@@ -51,43 +48,34 @@ type NamespaceClassReconciler struct {
 	Scheme *runtime.Scheme
 }
 
-func (r *NamespaceClassReconciler) getNamespacedResources() []string {
-	return []string{
-		ResourceServiceAccount,
-		ResourceNetworkPolicy,
+func (r *NamespaceClassReconciler) getNamespacedResources() []any {
+	return []any{
+		networkingv1.NetworkPolicy{},
+		v1.ServiceAccount{},
 	}
 }
 
-func (r *NamespaceClassReconciler) genResource(s string, ns v1.Namespace) client.Object {
-	objectMeta := metav1.ObjectMeta{
-		Name:      ns.Name,
-		Namespace: ns.Name,
-	}
-
-	switch s {
-	case ResourceNetworkPolicy:
-		return &networkingv1.NetworkPolicy{
-			ObjectMeta: objectMeta,
-		}
-	case ResourceServiceAccount:
-		return &v1.ServiceAccount{
-			ObjectMeta: objectMeta,
-		}
+func (r *NamespaceClassReconciler) genResource(s any, ns v1.Namespace) client.Object {
+	switch v := s.(type) {
+	case networkingv1.NetworkPolicy:
+		v.ObjectMeta = metav1.ObjectMeta{Namespace: ns.Name, Name: fmt.Sprintf("%s-network-policy", ns.Name)}
+		return &v
+	case v1.ServiceAccount:
+		v.ObjectMeta = metav1.ObjectMeta{Namespace: ns.Name, Name: fmt.Sprintf("%s-service-account", ns.Name)}
+		return &v
 	default:
 		return nil
 	}
 }
 
-func (r *NamespaceClassReconciler) appendResourceConfig(s string, object client.Object, nsClass corev1.NamespaceClass) client.Object {
-	switch s {
-	case ResourceNetworkPolicy:
-		networkPolicy := object.(*networkingv1.NetworkPolicy)
-		networkPolicy.Spec = nsClass.Spec.NetworkPolicy
-		return networkPolicy
-	case ResourceServiceAccount:
-		sa := object.(*v1.ServiceAccount)
+func (r *NamespaceClassReconciler) appendResourceConfig(object client.Object, nsClass corev1.NamespaceClass) client.Object {
+	switch o := object.(type) {
+	case *networkingv1.NetworkPolicy:
+		o.Spec = nsClass.Spec.NetworkPolicy
+		return o
+	case *v1.ServiceAccount:
 		// config sa here ...
-		return sa
+		return o
 	default:
 		return nil
 	}
@@ -180,21 +168,20 @@ func (r *NamespaceClassReconciler) tackleOneNamespace(ctx context.Context, ns v1
 }
 
 func (r *NamespaceClassReconciler) delNamespacedResource(ctx context.Context, ns v1.Namespace) (err error) {
-	key := client.ObjectKey{Namespace: ns.Name, Name: ns.Name}
-
 	for _, s := range r.getNamespacedResources() {
 		resource := r.genResource(s, ns)
+		key := client.ObjectKey{Namespace: ns.Name, Name: resource.GetName()}
 		if err = r.Get(ctx, key, resource); err != nil {
 			if !errors.IsNotFound(err) {
-				return fmt.Errorf("get %s in namespace '%s' error: %s", s, ns.Name, err)
+				return fmt.Errorf("get %s in namespace '%s' error: %s", resource.GetName(), ns.Name, err)
 			}
 			return nil
 		}
 
 		if err = r.Delete(ctx, resource); err != nil {
-			err = fmt.Errorf("delete %s in namespace '%s' error: %s", s, ns.Name, err)
+			err = fmt.Errorf("delete %s in namespace '%s' error: %s", resource.GetName(), ns.Name, err)
 		} else {
-			log.Log.Info(fmt.Sprintf("delete %s in namespace '%s' success", s, ns.Name))
+			log.Log.Info(fmt.Sprintf("delete %s in namespace '%s' success", resource.GetName(), ns.Name))
 		}
 	}
 	return
@@ -202,24 +189,24 @@ func (r *NamespaceClassReconciler) delNamespacedResource(ctx context.Context, ns
 
 func (r *NamespaceClassReconciler) updateNamespacedResource(ctx context.Context, ns v1.Namespace, nsClass corev1.NamespaceClass) (err error) {
 	// create or update namespaced resources
-	key := client.ObjectKey{Namespace: ns.Name, Name: ns.Name}
 	for _, s := range r.getNamespacedResources() {
 		resource := r.genResource(s, ns)
-		resource = r.appendResourceConfig(s, resource, nsClass)
+		resource = r.appendResourceConfig(resource, nsClass)
+		key := client.ObjectKey{Namespace: ns.Name, Name: resource.GetName()}
 		if err = r.Get(ctx, key, resource); err != nil {
 			if !errors.IsNotFound(err) {
-				return fmt.Errorf("get %T in namespace '%s' error: %s", resource, ns.Name, err)
+				return fmt.Errorf("get %s in namespace '%s' error: %s", resource.GetName(), ns.Name, err)
 			}
 			if err = r.Create(ctx, resource); err != nil {
-				return fmt.Errorf("create %T in namespace '%s' error: %s", resource, ns.Name, err)
+				return fmt.Errorf("create %s in namespace '%s' error: %s", resource.GetName(), ns.Name, err)
 			} else {
-				log.Log.Info(fmt.Sprintf("create %s in namespace '%s' success", s, ns.Name))
+				log.Log.Info(fmt.Sprintf("create %s in namespace '%s' success", resource.GetName(), ns.Name))
 			}
 		} else {
 			if err = r.Update(ctx, resource); err != nil {
-				return fmt.Errorf("update %T in namespace '%s' error: %s", resource, ns.Name, err)
+				return fmt.Errorf("update %s in namespace '%s' error: %s", resource.GetName(), ns.Name, err)
 			} else {
-				log.Log.Info(fmt.Sprintf("update %s in namespace '%s' success", s, ns.Name))
+				log.Log.Info(fmt.Sprintf("update %s in namespace '%s' success", resource.GetName(), ns.Name))
 			}
 		}
 	}
