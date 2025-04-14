@@ -17,15 +17,18 @@ limitations under the License.
 package controller
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"os"
 
 	"k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer/yaml"
+	yamlutil "k8s.io/apimachinery/pkg/util/yaml"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -46,39 +49,6 @@ const (
 type NamespaceClassReconciler struct {
 	client.Client
 	Scheme *runtime.Scheme
-}
-
-func (r *NamespaceClassReconciler) getNamespacedResources() []any {
-	return []any{
-		networkingv1.NetworkPolicy{},
-		v1.ServiceAccount{},
-	}
-}
-
-func (r *NamespaceClassReconciler) genResource(s any, ns v1.Namespace) client.Object {
-	switch v := s.(type) {
-	case networkingv1.NetworkPolicy:
-		v.ObjectMeta = metav1.ObjectMeta{Namespace: ns.Name, Name: fmt.Sprintf("%s-network-policy", ns.Name)}
-		return &v
-	case v1.ServiceAccount:
-		v.ObjectMeta = metav1.ObjectMeta{Namespace: ns.Name, Name: fmt.Sprintf("%s-service-account", ns.Name)}
-		return &v
-	default:
-		return nil
-	}
-}
-
-func (r *NamespaceClassReconciler) appendResourceConfig(object client.Object, nsClass corev1.NamespaceClass) client.Object {
-	switch o := object.(type) {
-	case *networkingv1.NetworkPolicy:
-		o.Spec = nsClass.Spec.NetworkPolicy
-		return o
-	case *v1.ServiceAccount:
-		// config sa here ...
-		return o
-	default:
-		return nil
-	}
 }
 
 type NSClassMap map[string]corev1.NamespaceClass
@@ -116,6 +86,40 @@ func (r *NamespaceClassReconciler) Reconcile(ctx context.Context, _ ctrl.Request
 	return res, nil
 }
 
+func (r *NamespaceClassReconciler) genNamespacedResources(namespaceClassName string) ([]*unstructured.Unstructured, error) {
+	configFilePath := fmt.Sprintf("config/namespace-class/%s.yaml", namespaceClassName)
+	data, err := os.ReadFile(configFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("read yaml config file: %s", err)
+	}
+
+	// decode yaml config file
+	var resources []*unstructured.Unstructured
+	decoder := yamlutil.NewYAMLOrJSONDecoder(bytes.NewReader(data), 1024)
+	for {
+		var rawObj runtime.RawExtension
+		if err = decoder.Decode(&rawObj); err != nil {
+			break
+		}
+
+		// decode to unstructured
+		obj, _, err := yaml.NewDecodingSerializer(unstructured.UnstructuredJSONScheme).Decode(rawObj.Raw, nil, nil)
+		if err != nil {
+			return nil, fmt.Errorf("decode to unstructured error: %w", err)
+		}
+
+		unstructuredMap, err := runtime.DefaultUnstructuredConverter.ToUnstructured(obj)
+		if err != nil {
+			return nil, fmt.Errorf("convert to unstructured error: %w", err)
+		}
+
+		unstructuredObj := &unstructured.Unstructured{Object: unstructuredMap}
+		resources = append(resources, unstructuredObj)
+	}
+
+	return resources, nil
+}
+
 func (r *NamespaceClassReconciler) getAllNS(ctx context.Context) (nsList v1.NamespaceList, err error) {
 	if err = r.List(ctx, &nsList, &client.ListOptions{
 		LabelSelector: labels.Everything(),
@@ -149,14 +153,8 @@ func (r *NamespaceClassReconciler) getNSClassMap(ctx context.Context) (NSClassMa
 }
 
 func (r *NamespaceClassReconciler) tackleOneNamespace(ctx context.Context, ns v1.Namespace, nsClassMap NSClassMap) {
-	// if the namespace has no label or invalid label value,
-	// it means that the namespace is not managed by this controller,
-	// should delete all related resources
 	nsClass, ok := nsClassMap[ns.Labels[NamespaceLabelName]]
 	if !ok {
-		if err := r.delNamespacedResource(ctx, ns); err != nil {
-			log.Log.Error(err, "")
-		}
 		return
 	}
 
@@ -167,9 +165,13 @@ func (r *NamespaceClassReconciler) tackleOneNamespace(ctx context.Context, ns v1
 	}
 }
 
-func (r *NamespaceClassReconciler) delNamespacedResource(ctx context.Context, ns v1.Namespace) (err error) {
-	for _, s := range r.getNamespacedResources() {
-		resource := r.genResource(s, ns)
+func (r *NamespaceClassReconciler) delNamespacedResource(ctx context.Context, ns v1.Namespace, nsClass corev1.NamespaceClass) (err error) {
+	resources, err := r.genNamespacedResources(nsClass.Name)
+	if err != nil {
+		return fmt.Errorf("gen namespaced resources error: %s", err)
+	}
+
+	for _, resource := range resources {
 		key := client.ObjectKey{Namespace: ns.Name, Name: resource.GetName()}
 		if err = r.Get(ctx, key, resource); err != nil {
 			if !errors.IsNotFound(err) {
@@ -184,15 +186,23 @@ func (r *NamespaceClassReconciler) delNamespacedResource(ctx context.Context, ns
 			log.Log.Info(fmt.Sprintf("delete %s in namespace '%s' success", resource.GetName(), ns.Name))
 		}
 	}
-	return
+
+	return nil
 }
 
 func (r *NamespaceClassReconciler) updateNamespacedResource(ctx context.Context, ns v1.Namespace, nsClass corev1.NamespaceClass) (err error) {
+	resources, err := r.genNamespacedResources(nsClass.Name)
+	if err != nil {
+		return fmt.Errorf("gen namespaced resources error: %s", err)
+	}
+
 	// create or update namespaced resources
-	for _, s := range r.getNamespacedResources() {
-		resource := r.genResource(s, ns)
-		resource = r.appendResourceConfig(resource, nsClass)
+	for _, resource := range resources {
 		key := client.ObjectKey{Namespace: ns.Name, Name: resource.GetName()}
+		fmt.Println("**** update ****")
+		fmt.Printf("%+v\n", key)
+		fmt.Println("**** update ****")
+
 		if err = r.Get(ctx, key, resource); err != nil {
 			if !errors.IsNotFound(err) {
 				return fmt.Errorf("get %s in namespace '%s' error: %s", resource.GetName(), ns.Name, err)
@@ -210,6 +220,7 @@ func (r *NamespaceClassReconciler) updateNamespacedResource(ctx context.Context,
 			}
 		}
 	}
+
 	return nil
 }
 
@@ -251,6 +262,19 @@ func (r *NamespaceClassReconciler) genNamespacePredicates() predicate.Funcs {
 				log.Log.Info("no label changes")
 				return false
 			}
+			ctx := context.Background()
+			nsClassMap, err := r.getNSClassMap(ctx)
+			if err != nil {
+				log.Log.Error(err, "get namespace class map error")
+				return false
+			}
+			if nsClass, ok := nsClassMap[oldObj.Labels[NamespaceLabelName]]; ok {
+				if err = r.delNamespacedResource(ctx, *oldObj, nsClass); err != nil {
+					log.Log.Error(err, "delete namespaced resource error")
+				}
+				return false
+			}
+
 			return true
 		},
 		DeleteFunc: func(e event.DeleteEvent) bool {
@@ -289,7 +313,7 @@ func (r *NamespaceClassReconciler) genNamespaceClassPredicates() predicate.Funcs
 				if ns.Labels[NamespaceLabelName] != nsClass.Name {
 					continue
 				}
-				if err = r.delNamespacedResource(ctx, ns); err != nil {
+				if err = r.delNamespacedResource(ctx, ns, *nsClass); err != nil {
 					log.Log.Error(err, "delete namespaced resource error")
 				}
 			}

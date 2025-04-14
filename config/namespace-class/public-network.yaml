@@ -1,0 +1,20 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: daochun-public-network-policy
+  namespace: daochun-public
+spec:
+  egress:
+    - {}
+  ingress:
+    - {}
+  podSelector: {}
+  policyTypes:
+    - Egress
+    - Ingress
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: daochun-public-service-account
+  namespace: daochun-public

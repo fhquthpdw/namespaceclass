@@ -17,7 +17,6 @@ limitations under the License.
 package v1
 
 import (
-	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -29,8 +28,7 @@ const (
 
 // NamespaceClassSpec defines the desired state of NamespaceClass.
 type NamespaceClassSpec struct {
-	NetworkPolicy networkingv1.NetworkPolicySpec `json:"network_policy"`
-	//InternalNetworkPolicy networkingv1.NetworkPolicySpec `json:"internal_network_policy"`
+	//
 }
 
 // NamespaceClassStatus defines the observed state of NamespaceClass.

@@ -7,39 +7,6 @@ metadata:
 spec:
   finalizers:
     - kubernetes
-#---
-#apiVersion: apps/v1
-#kind: Deployment
-#metadata:
-#  name: httpbin
-#  namespace: daochun-public
-#spec:
-#  replicas: 1
-#  selector:
-#    matchLabels:
-#      app: httpbin
-#      version: v1
-#  template:
-#    metadata:
-#      labels:
-#        app: httpbin
-#        version: v1
-#        stage: release
-#    spec:
-#      #serviceAccountName: httpbin
-#      containers:
-#        - image: 078611336077.dkr.ecr.cn-northwest-1.amazonaws.com.cn/devops/httpbin:printenv-httpd
-#          imagePullPolicy: IfNotPresent
-#          name: httpbin
-#          ports:
-#            - containerPort: 80
-#        - image: 078611336077.dkr.ecr.cn-northwest-1.amazonaws.com.cn/devops/busybox:1.32
-#          imagePullPolicy: IfNotPresent
-#          name: busybox
-#          command:
-#            - /bin/sleep
-#          args:
-#            - infinity
 ---
 apiVersion: v1
 kind: Namespace
@@ -50,74 +17,13 @@ metadata:
 spec:
   finalizers:
     - kubernetes
-#---
-#apiVersion: apps/v1
-#kind: Deployment
-#metadata:
-#  name: httpbin
-#  namespace: daochun-internal
-#spec:
-#  replicas: 1
-#  selector:
-#    matchLabels:
-#      app: httpbin
-#  template:
-#    metadata:
-#      labels:
-#        app: httpbin
-#    spec:
-#      #serviceAccountName: httpbin
-#      containers:
-#        - image: 078611336077.dkr.ecr.cn-northwest-1.amazonaws.com.cn/devops/httpbin:printenv-httpd
-#          imagePullPolicy: IfNotPresent
-#          name: httpbin
-#          ports:
-#            - containerPort: 80
-#        - image: 078611336077.dkr.ecr.cn-northwest-1.amazonaws.com.cn/devops/busybox:1.32
-#          imagePullPolicy: IfNotPresent
-#          name: busybox
-#          command:
-#            - /bin/sleep
-#          args:
-#            - infinity
 ---
 apiVersion: core.akuity.io/v1
 kind: NamespaceClass
 metadata:
   name: public-network
-spec:
-  network_policy:
-    podSelector:
-      { }
-    egress:
-      - { }
-    ingress:
-      - { }
-    policyTypes:
-      - Egress
-      - Ingress
 ---
 apiVersion: core.akuity.io/v1
 kind: NamespaceClass
 metadata:
   name: internal-network
-spec:
-  network_policy:
-    podSelector:
-      { }
-    egress:
-      - { }
-    ingress:
-      - from:
-          - ipBlock:
-              cidr: 192.168.1.100/32  # VPN IP address
-        ports:
-          - port: 80
-            protocol: TCP
-          - port: 443
-            protocol: TCP
-          - port: 8080
-            protocol: TCP
-    policyTypes:
-      - Egress
-      - Ingress
